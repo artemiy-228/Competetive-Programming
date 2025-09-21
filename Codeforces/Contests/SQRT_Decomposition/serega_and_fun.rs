@@ -1,56 +1,145 @@
+use std::collections::HashMap;
 use std::io;
 
 #[derive(Debug, Clone)]
 struct Component {
-    pub size: i32,
-    pub block: Vec<i32>,
-    pub freq: Vec<i32>,
+    pub size: usize,
+    pub freq: HashMap<i32, i32>,
+    pub array: Vec<i32>,
 }
 
 impl Component {
-    pub fn new(n: i32) -> Self {
-        Component {
+    pub fn new() -> Self {
+        Self {
             size: 0,
-            block: Vec::new(),
-            freq: vec![0; n as usize],
+            freq: HashMap::new(),
+            array: Vec::new(),
         }
     }
 }
 
-pub fn get_count(
-    decompose_arr: &Vec<Component>,
+macro_rules! input_num {
+    () => {{
+        let mut input = String::new();
+        io::stdin().read_line(&mut input);
+        input.trim().parse::<i32>().unwrap()
+    }};
+}
+
+macro_rules! input_array {
+    () => {{
+        let mut input = String::new();
+        io::stdin().read_line(&mut input);
+        input
+            .trim()
+            .split_whitespace()
+            .map(|x| x.parse::<i32>().unwrap())
+            .collect()
+    }};
+}
+
+pub fn build(decompose_arr: &mut Vec<Component>, array: &Vec<i32>, decompose_size: usize) {
+    let n = array.len();
+
+    for i in 0..decompose_arr.len() {
+        for j in 0..decompose_size {
+            let index = i * decompose_size + j;
+            if index >= n {
+                break;
+            }
+            let temp = array[index];
+            decompose_arr[i].array.push(temp);
+            *decompose_arr[i].freq.entry(temp).or_insert(0) += 1;
+            decompose_arr[i].size += 1;
+        }
+    }
+}
+
+pub fn rebuild_decompose(decompose_arr: &mut Vec<Component>, decompose_size: usize) {
+    let mut temp: Vec<i32> = Vec::new();
+
+    for component in decompose_arr.iter_mut() {
+        for e in component.array.iter() {
+            temp.push(*e);
+        }
+        component.array.clear();
+        component.freq.clear();
+        component.size = 0;
+    }
+    build(decompose_arr, &temp, decompose_size);
+}
+
+fn find_block(decompose_arr: &Vec<Component>, index: usize) -> (usize, usize) {
+    let mut sum: usize = 0;
+    let mut a: usize = 0;
+    let mut b: usize = 0;
+    for (block_idx, block) in decompose_arr.iter().enumerate() {
+        if index < sum + block.size {
+            a = block_idx;
+            b = index - sum;
+            break;
+        }
+        sum += block.array.len();
+    }
+    return (a, b);
+}
+
+pub fn cycle_shift(
+    decompose_arr: &mut Vec<Component>,
     l: usize,
     r: usize,
-    k: i32,
-    component_size: usize,
-) -> i32 {
-    let mut count = 0;
-    let block_l = l / component_size;
-    let block_r = r / component_size;
+    rebuild: &mut bool,
+    block_size: usize,
+) {
+    let (block_l, i_l) = find_block(&decompose_arr, l);
+    let (block_r, j_r) = find_block(&decompose_arr, r);
 
     if block_l == block_r {
-        if l % component_size == 0 && r % component_size == decompose_arr[block_l].block.len() - 1 {
-            count += decompose_arr[block_l].freq[k as usize - 1];
-        } else {
-            for i in (l % component_size)..=(r % component_size) {
-                if decompose_arr[block_l].block[i] == k {
-                    count += 1;
-                }
+        let value = decompose_arr[block_l].array.remove(j_r);
+        decompose_arr[block_l].array.insert(i_l, value);
+    } else {
+        let temp = decompose_arr[block_r].array.remove(j_r);
+        *decompose_arr[block_r].freq.entry(temp).or_insert(0) -= 1;
+        decompose_arr[block_r].size -= 1;
+
+        if decompose_arr[block_r].size <= block_size / 4 {
+            *rebuild = true;
+        }
+
+        decompose_arr[block_l].array.insert(i_l, temp);
+        *decompose_arr[block_l].freq.entry(temp).or_insert(0) += 1;
+        decompose_arr[block_l].size += 1;
+
+        if decompose_arr[block_l].size >= 4 * block_size {
+            *rebuild = true;
+        }
+    }
+}
+
+pub fn get_count(decompose_arr: &Vec<Component>, l: usize, r: usize, k: i32) -> i32 {
+    let (block_l, i_l) = find_block(decompose_arr, l);
+    let (block_r, j_r) = find_block(decompose_arr, r);
+
+    let mut count = 0;
+
+    if block_l == block_r {
+        for i in i_l..=j_r {
+            if decompose_arr[block_l].array[i] == k {
+                count += 1;
             }
         }
     } else {
-        for i in (l % component_size)..decompose_arr[block_l].block.len() {
-            if decompose_arr[block_l].block[i] == k {
+        for i in i_l..decompose_arr[block_l].array.len() {
+            if decompose_arr[block_l].array[i] == k {
                 count += 1;
             }
         }
 
-        for b in (block_l + 1)..block_r {
-            count += decompose_arr[b].freq[k as usize - 1];
+        for block in (block_l + 1)..block_r {
+            count += *decompose_arr[block].freq.get(&k).unwrap_or(&0);
         }
-
-        for i in 0..=(r % component_size) {
-            if decompose_arr[block_r].block[i] == k {
+        for i in 0..=j_r {
+            if decompose_arr[block_r].array[i] == k {
                 count += 1;
             }
         }
@@ -59,127 +148,52 @@ pub fn get_count(
     count
 }
 
-pub fn rebuild_composition(decompose_arr: &mut Vec<Component>, component_size: usize, n: usize) {
-    let mut arr: Vec<i32> = Vec::new();
-    for component in decompose_arr.iter_mut() {
-        for e in component.block.iter() {
-            arr.push(*e);
-        }
-        component.block.clear();
-        component.freq.fill(0);
-        component.size = 0;
-    }
-
-    for i in 0..n {
-        let block_index = i / component_size;
-        decompose_arr[block_index].block.push(arr[i]);
-        decompose_arr[block_index].freq[arr[i] as usize - 1] += 1;
-        decompose_arr[block_index].size += 1;
-    }
-}
-
-pub fn cycle_shift(decompose_arr: &mut Vec<Component>, l: usize, r: usize, component_size: usize) {
-    let block_l = l / component_size;
-    let block_r = r / component_size;
-    let mut pos_l = l % component_size;
-    let mut pos_r = r % component_size;
-
-    if block_l == block_r {
-        let val = decompose_arr[block_l].block.remove(pos_r);
-        decompose_arr[block_l].block.insert(pos_l, val);
-    } else {
-        let mut val = decompose_arr[block_l].block.pop().unwrap();
-        decompose_arr[block_l].freq[val as usize - 1] -= 1;
-
-        for b in (block_l + 1)..block_r {
-            decompose_arr[b].block.insert(0, val);
-            decompose_arr[b].freq[val as usize - 1] += 1;
-
-            val = decompose_arr[b].block.pop().unwrap();
-            decompose_arr[b].freq[val as usize - 1] -= 1;
-        }
-
-        decompose_arr[block_r].block.insert(0, val);
-        decompose_arr[block_r].freq[val as usize - 1] += 1;
-
-        val = decompose_arr[block_r].block.remove(pos_r + 1);
-        decompose_arr[block_r].freq[val as usize - 1] -= 1;
-        decompose_arr[block_l].block.insert(pos_l, val);
-        decompose_arr[block_l].freq[val as usize - 1] += 1;
-    }
-}
-
 fn main() {
-    let mut input = String::new();
+    let n: usize = input_num!() as usize;
+    let array: Vec<i32> = input_array!();
 
-    io::stdin().read_line(&mut input).unwrap();
-    let n: i32 = input.trim().parse().unwrap();
+    let sqrt_f = (n as f64).sqrt();
+    let num_blocks = if sqrt_f.fract() == 0.0 {
+        sqrt_f as usize
+    } else {
+        sqrt_f as usize + 1
+    };
+    let block_size = (n + num_blocks - 1) / num_blocks;
 
-    input.clear();
-    io::stdin().read_line(&mut input).unwrap();
-    let arr: Vec<i32> = input
-        .trim()
-        .split_whitespace()
-        .map(|x| x.parse::<i32>().unwrap())
-        .collect();
+    let mut decompose_arr: Vec<Component> = vec![Component::new(); num_blocks];
+    build(&mut decompose_arr, &array, block_size);
 
-    let component_size = (n as f64).sqrt() as usize + 1;
-    let num_blocks = (n as usize + component_size - 1) / component_size;
-
-    let mut decompose_arr: Vec<Component> = vec![Component::new(n); num_blocks];
-
-    for i in 0..n as usize {
-        let block_index = i / component_size;
-        decompose_arr[block_index].block.push(arr[i]);
-        decompose_arr[block_index].freq[arr[i] as usize - 1] += 1;
-        decompose_arr[block_index].size += 1;
-    }
-
-    input.clear();
-    io::stdin().read_line(&mut input).unwrap();
-    let q: i32 = input.trim().parse().unwrap();
-
-    let mut lastans = 0;
+    let q: usize = input_num!() as usize;
+    let mut lastans: i32 = 0;
+    let mut rebuild = false;
 
     for _ in 0..q {
-        input.clear();
-        io::stdin().read_line(&mut input);
+        let query: Vec<i32> = input_array!();
+        if query[0] == 1 {
+            let mut l = ((query[1] + lastans - 1) % (n as i32)) as usize;
+            let mut r = ((query[2] + lastans - 1) % (n as i32)) as usize;
 
-        let task: Vec<i32> = input
-            .trim()
-            .split_whitespace()
-            .map(|x| x.parse::<i32>().unwrap())
-            .collect();
-
-        if task[0] == 1 {
-            let mut l: usize = task[1] as usize;
-            let mut r: usize = task[2] as usize;
             if l > r {
-                let temp = l;
-                l = r;
-                r = temp;
+                std::mem::swap(&mut l, &mut r);
             }
-            l = ((l as i32 + lastans - 1) % n) as usize;
-            r = ((r as i32 + lastans - 1) % n) as usize;
 
-            cycle_shift(&mut decompose_arr, l, r, component_size);
+            cycle_shift(&mut decompose_arr, l, r, &mut rebuild, block_size);
+            if rebuild {
+                rebuild_decompose(&mut decompose_arr, num_blocks);
+                rebuild = false;
+            }
         } else {
-            let mut l: usize = task[1] as usize;
-            let mut r: usize = task[2] as usize;
+            let mut l = ((query[1] + lastans - 1) % (n as i32)) as usize;
+            let mut r = ((query[2] + lastans - 1) % (n as i32)) as usize;
+            let k = ((query[3] + lastans - 1) % (n as i32)) as i32 + 1;
+
             if l > r {
-                let temp = l;
-                l = r;
-                r = temp;
+                std::mem::swap(&mut l, &mut r);
             }
-            l = ((l as i32 + lastans - 1) % n) as usize;
-            r = ((r as i32 + lastans - 1) % n) as usize;
 
-            let k = ((task[3] + lastans - 1) % n + 1) as i32;
-
-            let count = get_count(&decompose_arr, l, r, k, component_size);
-            println!("{}", count);
-            lastans = count;
+            let ans = get_count(&mut decompose_arr, l, r, k);
+            println!("{}", ans);
+            lastans = ans;
         }
-        println!("{:?}", decompose_arr);
     }
 }
