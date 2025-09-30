@@ -1,0 +1,1 @@
+/home/artemka/Programming/Competetive-Programming/IPC/Personal_Comnepition_2025/target/debug/Personal_Comnepition_2025: /home/artemka/Programming/Competetive-Programming/IPC/Personal_Comnepition_2025/src/main.rs
